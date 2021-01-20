@@ -14,9 +14,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 conn = sqlite3.connect("housing.db")
-query = '''SELECT * FROM suburb_performance_quaterly'''
+query = '''SELECT * FROM suburb_performance_yearly'''
 df = pd.read_sql_query(query, conn)
-df['DATE'] = pd.to_datetime(df[['year', 'month']].assign(DAY=1))
+#df['DATE'] = pd.to_datetime(df[['year', 'month']].assign(DAY=1))
 suburbs = list(set(df['suburb'].to_list()))
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 types = ["Unit", "House"]
@@ -118,9 +118,10 @@ def update_graph(filt,filt2,xaxis_column_name, yaxis_column_name):
     #    df2 = dff[dff['suburb']==sub]
     #    #print(df2)
         fig2 = px.line(dff,x=xaxis_column_name,y=var,color="bedrooms",line_dash="suburb").update_traces(mode="lines+markers")
-        fig.add_trace(fig2.data[0])
-        fig.add_trace(fig2.data[1])
-        fig.add_trace(fig2.data[2])
+        for i in range(len(fig2.data)):
+            fig.add_trace(fig2.data[i])
+        #fig.add_trace(fig2.data[1])
+        #fig.add_trace(fig2.data[2])
     #    fig.add_trace(fig2.data[1])
 
     #    fig.add_trace(go.Scatter(x=dff[xaxis_column_name], y=dff[var], mode="lines+markers"))
