@@ -3,11 +3,13 @@ from bs4 import BeautifulSoup
 import sys
 import sqlite3
 import pickle as pkl
+import argparse
 from API_KEY import API_KEY
+
 URL_ADD = "https://api.domain.com.au/v1/addressLocators?searchLevel=Suburb&suburb={}&state=NSW&postcode={}"
 URL_PERF = "https://api.domain.com.au/v2/suburbPerformanceStatistics/NSW/{}/{}?propertyCategory={}&bedrooms={}&periodSize={}&startingPeriodRelativeToCurrent={}&totalPeriods={}"
 #API_KEY = "key_ef97cf191bb88481638276f78f5a46fd"
-conn = sqlite3.connect("housing.db")
+conn = sqlite3.connect(args.database_name)
 sql = conn.cursor()
 
 def get_syd_suburbs():
@@ -108,7 +110,6 @@ def get_suburb_performance(suburb,postcode,category,bedrooms,periodSize,stPeriod
     if(not response.status_code == 200):
         print(response.status_code)
         return [], response.status_code
-    #print(response.json())
     data = response.json()
     outdata = []
     for info in data['series']['seriesInfo']:
@@ -151,34 +152,42 @@ def generate_all_combinations(bedrooms, types):
 
 if __name__ == "__main__":
 
-    get_subs = 0
-    if(get_subs):
-
+    parser = argparse.ArgumentParser(description='Get housing data for Sydney')
+    parser.add_argument('--database_name',type=str,default='test.db',help="Name of sql database")
+    parser.add_argument('--get_suburbs',type=bool, default=False, help='will generate table of suburbs,
+            need to do this when running the script for the first time')
+    parser.add_argument('--reset_table',type=bool, default=False, help='Delete old data and start new')
+    parser.add_argument('--fill_table_performance',type=bool, default=False)
+    parser.add_argument('--period',type=str, nargs='+', default='yearly', help='Years, HalfYears or Quarters')
+    parser.add_argument('--num_periods',type=int, default=10, help='Number of time periods for data')
+    parser.add_argument('--bedrooms',type=str, nargs='+', default='1')
+    parser.add_argument('--type',type=str, nargs='+' ,default='House',help="House of Unit")
+   
+    
+    if(args.get_suburbs):
         data = get_syd_suburbs()
         get_suburb_code_domain(data)
         create_table_suburbs("suburbs")
         insert_data_suburbs("suburbs",data)
-        print(data[0])
         conn.commit()
-    
-    #query_points = generate_all_combinations(['1','2','3'],['House','Unit'])
-    #pkl.dump(query_points,open('query_points.pkl','wb'))
-    query_points = pkl.load(open('query_points.pkl','rb'))
-    print(len(query_points))
-    #drop_unknown_suburbs("suburbs")
 
-    #create_table_performance('suburb_performance_quaterly')
-    idx=insert_suburb_performance_table(query_points,'suburb_performance_quaterly','Quarters',1,40)    
-    query_points = query_points[idx:]
-    pkl.dump(query_points,open('query_points.pkl','wb'))
-    print("PROCESSED {} samples, LEFT {} samples".format(idx,len(query_points)))
+   
+    if(args.fill_table_performance):
+         tab_name = 'suburb_performance_'+args.period
+         if(args.reset_table):
+            query_points = generate_all_combinations(args.bedrooms,args.type)
+            pkl.dump(query_points,open('query_points.pkl','wb'))
+            create_table_performance(tab_name)
 
-    #create_table_performance('suburb_performance_quarterly')
-    #insert_suburb_performance_table('suburb_performance_yearly','Quarters',1,40)    
-    #query = '''SELECT suburb_name, postcode FROM suburbs WHERE suburb_name NOT IN (SELECT suburb FROM suburb_performance_yearly)'''
-    query = '''SELECT COUNT(*) FROM (select distinct * FROM suburb_performance_quaterly)'''
-    sql.execute(query)
-    print(sql.fetchall())
+        query_points = pkl.load(open('query_points.pkl','rb'))
+        idx=insert_suburb_performance_table(query_points,tab_name,args.period,1,args.num_periods)    
+        query_points = query_points[idx:]
+        pkl.dump(query_points,open('query_points.pkl','wb'))
+        print("PROCESSED {} samples, LEFT {} samples".format(idx,len(query_points)))
+
+        query = '''SELECT COUNT(*) FROM (select distinct * FROM {})'''.format(tab_name)
+        sql.execute(query)
+        print("Table {} has {} entries".format(tab_name, sql.fetchall()))
 
 
 
