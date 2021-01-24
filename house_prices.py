@@ -7,31 +7,60 @@ import argparse
 from API_KEY import API_KEY
 
 URL_ADD = "https://api.domain.com.au/v1/addressLocators?searchLevel=Suburb&suburb={}&state=NSW&postcode={}"
-URL_PERF = "https://api.domain.com.au/v2/suburbPerformanceStatistics/NSW/{}/{}?propertyCategory={}&bedrooms={}&periodSize={}&startingPeriodRelativeToCurrent={}&totalPeriods={}"
-#API_KEY = "key_ef97cf191bb88481638276f78f5a46fd"
-conn = sqlite3.connect(args.database_name)
-sql = conn.cursor()
+URL_PERF = "https://api.domain.com.au/v2/suburbPerformanceStatistics/{}/{}/{}?propertyCategory={}&bedrooms={}&periodSize={}&startingPeriodRelativeToCurrent={}&totalPeriods={}"
 
-def get_syd_suburbs():
-    URL = "https://www.intosydneydirectory.com.au/sydney-postcodes.php"
-    HTML = requests.get(URL)
-    if(not HTML.status_code==200):
-        sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
-    soup = BeautifulSoup(HTML.text,'html.parser')
-    table = soup.find('table') 
-    rows = table.findAll('tr')
-    data = [[cell.text for cell in row("td")] for row in rows]
-    del data[0]
-    return data
+def get_suburbs(city):
+    if(city=='Sydney'):
+        URL = "https://www.intosydneydirectory.com.au/sydney-postcodes.php"
+        HTML = requests.get(URL)
+        if(not HTML.status_code==200):
+            sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+        soup = BeautifulSoup(HTML.text,'html.parser')
+        table = soup.find('table') 
+        rows = table.findAll('tr')
+        data = [[cell.text for cell in row("td")] for row in rows]
+        del data[0]
+        return data
+    elif(city=='Melbourne'):
+        URL = "https://www.homely.com.au/find-suburb-by-region/melbourne-greater-victoria"
+        HTML = requests.get(URL)
+        if(not HTML.status_code==200):
+            sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+        soup = BeautifulSoup(HTML.text,'html.parser')
+        allList  = soup.find("div", "col-group")
+        links = allList.find_all("a")
+        Msubs = []
+        for link in links:
+            Msubs.append(link.get_text())
+        URL = "http://www.justweb.com.au/post-code/melbourne-postalcodes.html"
+        HTML = requests.get(URL)
+        if(not HTML.status_code==200):
+            sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+        soup = BeautifulSoup(HTML.text,'html.parser')
+        allList = soup.find_all("select")
+        subDict = {}
+        for entry in allList[1].find_all("option"):
+            txt = entry.get_text()
+            code = txt[-4:]
+            sub = txt[:-4].strip()
+            subDict[sub]=code
+        MelSubs = []
+        for sub in Msubs:
+            try:
+                MelSubs.append((sub,subDict[sub]))
+            except:
+                print("No postcode data for {}".format(sub)) 
+                continue
+        return MelSubs
+    else:
+        sys.exit("No implementation for {}".format(city))
 
 def create_table_suburbs(name):
     query = '''DROP TABLE IF EXISTS {}'''.format(name)
     sql.execute(query)
     query = '''CREATE TABLE  {} (
         suburb_name TEXT,
-        state TEXT,
-        postcode INTEGER NOT NULL,
-        ID INTEGER NOT NULL
+        postcode INTEGER NOT NULL
         ); '''.format(name)
 
     sql.execute(query)
@@ -39,23 +68,9 @@ def create_table_suburbs(name):
 
 
 def insert_data_suburbs(name,data):
-    query = '''INSERT INTO {} VALUES (?,?,?,?)'''.format(name)
+    query = '''INSERT INTO {} VALUES (?,?)'''.format(name)
     sql.executemany(query,data)
     print('DATA INSERTED IN TABLE {}'.format(name))
-
-def get_suburb_code_domain(data):
-
-    for row in data:
-        URL = URL_ADD.format(row[0],row[2]) #name and postcode
-        response = requests.get(URL, headers = {"X-Api-Key": API_KEY})
-        outp = response.json()
-        try:
-            row.append(outp[0]['ids'][0]['id'])
-            print("PROCESSED {}".format(row[0]))
-        except:
-            print(" NO RESULT FOR SUBURB {}\n".format(row[0]))
-            print(outp)
-            row.append(-1)
 
 def drop_unknown_suburbs(name):
     query = '''DELETE FROM {} WHERE ID = -1;'''.format(name)
@@ -104,8 +119,8 @@ def insert_data_suburbs_performance(name,data):
     sql.executemany(query,data)
     print('DATA INSERTED IN TABLE {}'.format(name))
 
-def get_suburb_performance(suburb,postcode,category,bedrooms,periodSize,stPeriod,totalPeriods):
-    URL = URL_PERF.format(suburb,postcode,category,bedrooms,periodSize,stPeriod,totalPeriods)
+def get_suburb_performance(state,suburb,postcode,category,bedrooms,periodSize,stPeriod,totalPeriods):
+    URL = URL_PERF.format(state,suburb,postcode,category,bedrooms,periodSize,stPeriod,totalPeriods)
     response = requests.get(URL,headers = {"X-Api-Key": API_KEY})
     if(not response.status_code == 200):
         print(response.status_code)
@@ -119,11 +134,17 @@ def get_suburb_performance(suburb,postcode,category,bedrooms,periodSize,stPeriod
         outdata.append(base)
     return outdata, response.status_code
 
-def insert_suburb_performance_table(query_points,table,periodSize,stPeriod,totalPeriods):
+def insert_suburb_performance_table(city,query_points,table,periodSize,stPeriod,totalPeriods):
+    if(city=='Sydney'):
+        state='NSW'
+    elif(city=='Melbourne'):
+        state='VIC'
+    else:
+        sys.exit("Not implemented {}".format(city))
     idx=0
     for query in query_points:
             print("PROCESSING SUBURB {} for {} Bedroom {}".format(query[0],query[2],query[3]))
-            data, code = get_suburb_performance(query[0],query[1],query[3],query[2],periodSize,stPeriod,totalPeriods)
+            data, code = get_suburb_performance(state,query[0],query[1],query[3],query[2],periodSize,stPeriod,totalPeriods)
             if(not code==200):
                 if(code==429):
                     print("Quota Exceeded")
@@ -135,14 +156,15 @@ def insert_suburb_performance_table(query_points,table,periodSize,stPeriod,total
             conn.commit()
     return idx
 
-def generate_all_combinations(bedrooms, types):
+def generate_all_combinations(bedrooms, types, city):
     #Have to make a list and save to file for all combinations I want
     # Doing this because I am only allowed 500 API calls per day
     # An easy way of keeping track what has been done and what not
-    query = '''SELECT suburb_name, postcode FROM suburbs'''
+    query = '''SELECT suburb_name, postcode FROM suburbs_{}'''.format(city)
     sql.execute(query)
     query_points = []
     location = sql.fetchall()
+    print(bedrooms, types)
     for loc in location:
         for beds in bedrooms:
             for ty in types:
@@ -154,40 +176,43 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Get housing data for Sydney')
     parser.add_argument('--database_name',type=str,default='test.db',help="Name of sql database")
-    parser.add_argument('--get_suburbs',type=bool, default=False, help='will generate table of suburbs,
+    parser.add_argument('--city',type=str,default='Sydney',help="Name of city")
+    parser.add_argument('--get_suburbs',type=bool, default=False, help='will generate table of suburbs,\
             need to do this when running the script for the first time')
     parser.add_argument('--reset_table',type=bool, default=False, help='Delete old data and start new')
     parser.add_argument('--fill_table_performance',type=bool, default=False)
-    parser.add_argument('--period',type=str, nargs='+', default='yearly', help='Years, HalfYears or Quarters')
+    parser.add_argument('--period',type=str, nargs='+', default='Years', help='Years, HalfYears or Quarters')
     parser.add_argument('--num_periods',type=int, default=10, help='Number of time periods for data')
-    parser.add_argument('--bedrooms',type=str, nargs='+', default='1')
-    parser.add_argument('--type',type=str, nargs='+' ,default='House',help="House of Unit")
-   
-    
+    parser.add_argument('--bedrooms',type=str, nargs='+', default=['1'])
+    parser.add_argument('--type',type=str, nargs='+' ,default=['House'],help="House of Unit")
+    args = parser.parse_args()
+
+    conn = sqlite3.connect(args.database_name)
+    sql = conn.cursor()
+    print(type(args.bedrooms),"beds")
     if(args.get_suburbs):
-        data = get_syd_suburbs()
-        get_suburb_code_domain(data)
-        create_table_suburbs("suburbs")
-        insert_data_suburbs("suburbs",data)
+        data = get_suburbs(args.city)
+        create_table_suburbs("suburbs_"+args.city)
+        insert_data_suburbs("suburbs_"+args.city,data)
         conn.commit()
 
    
     if(args.fill_table_performance):
-         tab_name = 'suburb_performance_'+args.period
+         tab_name = 'suburb_performance_'+args.city+'_'+args.period
          if(args.reset_table):
-            query_points = generate_all_combinations(args.bedrooms,args.type)
-            pkl.dump(query_points,open('query_points.pkl','wb'))
+            query_points = generate_all_combinations(args.bedrooms,args.type, args.city)
+            pkl.dump(query_points,open('query_points_{}.pkl'.format(args.city),'wb'))
             create_table_performance(tab_name)
 
-        query_points = pkl.load(open('query_points.pkl','rb'))
-        idx=insert_suburb_performance_table(query_points,tab_name,args.period,1,args.num_periods)    
-        query_points = query_points[idx:]
-        pkl.dump(query_points,open('query_points.pkl','wb'))
-        print("PROCESSED {} samples, LEFT {} samples".format(idx,len(query_points)))
+         query_points = pkl.load(open('query_points_{}.pkl'.format(args.city),'rb'))
+         idx=insert_suburb_performance_table(args.city,query_points,tab_name,args.period,1,args.num_periods)    
+         query_points = query_points[idx:]
+         pkl.dump(query_points,open('query_points_{}.pkl'.format(args.city),'wb'))
+         print("PROCESSED {} samples, LEFT {} samples".format(idx,len(query_points)))
 
-        query = '''SELECT COUNT(*) FROM (select distinct * FROM {})'''.format(tab_name)
-        sql.execute(query)
-        print("Table {} has {} entries".format(tab_name, sql.fetchall()))
+         query = '''SELECT COUNT(*) FROM (select distinct * FROM {})'''.format(tab_name)
+         sql.execute(query)
+         print("Table {} has {} entries".format(tab_name, sql.fetchall()))
 
 
 
