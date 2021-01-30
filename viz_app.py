@@ -1,7 +1,6 @@
 import sqlite3
 import pandas as pd
 import numpy as np
-
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
@@ -14,10 +13,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 conn = sqlite3.connect("housing.db")
-query = '''SELECT * FROM suburb_performance_yearly'''
+query = '''SELECT * FROM suburb_performance_Sydney_Years'''
 df = pd.read_sql_query(query, conn)
+query = '''SELECT * FROM suburb_demographic_Sydney'''
+df_demo = pd.read_sql_query(query,conn)
 #df['DATE'] = pd.to_datetime(df[['year', 'month']].assign(DAY=1))
 suburbs = list(set(df['suburb'].to_list()))
+cats = df_demo['category'].unique()
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 types = ["Unit", "House"]
 beds = [1,2,3]
@@ -77,25 +79,29 @@ app.layout = html.Div([
     ]),
 
     dcc.Graph(id='indicator-graphic'),
+    html.Div([html.H2("Demographic")]),
+    html.Div([
+         dcc.Dropdown(
+                id='subs',
+                options=[{'label': i, 'value': i} for i in suburbs],
+                value=['Kingsford'], multi=True
+            )]),
+    html.Div([
+    dcc.Dropdown(
+       id='var',
+       options=[{'label': i, 'value': i} for i in cats],
+       value=['CountryOfBirth'], multi=True
+   )]),
 
-    #dcc.Slider(
-    #    id='year--slider',
-    #    min=df['Year'].min(),
-    #    max=df['Year'].max(),
-    #    value=df['Year'].max(),
-    #    marks={str(year): str(year) for year in df['Year'].unique()},
-    #    step=None
-    #)
+    dcc.Graph(id='pie-chart'),
 ])
 
 @app.callback(
     Output('indicator-graphic', 'figure'),
     Input('filt','value'),
     Input('filt2','value'),
-    #Input('filt3','value'),
     Input('xaxis-column', 'value'),
     Input('yaxis-column', 'value'))
-    #Input('year--slider', 'value'))
 def update_graph(filt,filt2,xaxis_column_name, yaxis_column_name):
     #dff = df[df['Year'] == year_value]
     dff = df.loc[df['suburb'].isin(filt)]
@@ -138,6 +144,24 @@ def update_graph(filt,filt2,xaxis_column_name, yaxis_column_name):
 
     return fig
 
+@app.callback(
+    Output('pie-chart', 'figure'),
+    Input('subs','value'),
+    Input('var','value'))
+def dem_callback(subs,var):
+    dff = df_demo[df_demo['suburb'].isin(subs)]
+    dff = dff[dff['category'].isin(var)]
+    dff = dff.nlargest(5,'value')
+    print(dff)
+    fig = px.pie(dff,values='value',names='subcategory')
+    fig.update_layout(legend=dict(
+        yanchor="top",
+        y=0.99,
+        xanchor="left",
+        x=0.01
+    ))
+
+    return fig
 if __name__ == '__main__':
     app.run_server(debug=True)
 
