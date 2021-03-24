@@ -18,3 +18,5 @@ python3 viz_app.py Melbourne
 ```
 
 ![alt text](./figure/example_price.PNG)
+![alt text](./figure/example_demo.PNG)
+
