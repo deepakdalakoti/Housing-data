@@ -12,12 +12,14 @@ from dash.dependencies import Input, Output
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import sys
+
 conn = sqlite3.connect("housing.db")
-query = '''SELECT * FROM suburb_performance_Sydney_Years'''
+city = sys.argv[1]
+query = '''SELECT * FROM suburb_performance_{}_Years'''.format(city)
 df = pd.read_sql_query(query, conn)
-query = '''SELECT * FROM suburb_demographic_Sydney'''
+query = '''SELECT * FROM suburb_demographic_{}'''.format(city)
 df_demo = pd.read_sql_query(query,conn)
-#df['DATE'] = pd.to_datetime(df[['year', 'month']].assign(DAY=1))
 suburbs = list(set(df['suburb'].to_list()))
 cats = df_demo['category'].unique()
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -25,12 +27,9 @@ types = ["Unit", "House"]
 beds = [1,2,3]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-#df = pd.read_csv('https://plotly.github.io/datasets/country_indicators.csv')
-#print(df)
 filters = ['state','suburb','postcode','type','bedrooms']
 available_indicators = df.columns.to_list()
 available_indicators = list(set(available_indicators)-set(filters))
-#print(available_indicators)
 
 app.layout = html.Div([
 
@@ -40,24 +39,16 @@ app.layout = html.Div([
                 id='filt',
                 options=[{'label': i, 'value': i} for i in suburbs],
                 value=['Kingsford','Randwick'], multi=True
-            )]),
-        #style={'width': '30%', 'display': 'inline-block'}),
+            )],
+            style={'display': 'inline-block', 'width':'49%'}),
 
             html.Div([
             dcc.Dropdown(
                 id='filt2',
                 options=[{'label': i, 'value': i} for i in types],
                 value='Unit'
-            )]),
-        #style={'width': '30%', 'display': 'inline-block'}),
-
-            #html.Div([
-            #dcc.Dropdown(
-            #    id='filt3',
-            #    options=[{'label': i, 'value': i} for i in beds],
-            #    value=1
-            #)]),
-        #style={'width': '30%', 'display': 'inline-block'}),
+            )],
+            style={'display': 'inline-block', 'width':'49%'}),
 
         html.Div([
             dcc.Dropdown(
@@ -65,8 +56,8 @@ app.layout = html.Div([
                 options=[{'label': i, 'value': i} for i in available_indicators],
                 value='year'
             ),
-        ]),
-        #style={'width': '30%', 'display': 'inline-block'}),
+        ],
+        style={'display': 'inline-block', 'width':'49%'}),
 
         html.Div([
             dcc.Dropdown(
@@ -74,26 +65,41 @@ app.layout = html.Div([
                 options=[{'label': i, 'value': i} for i in available_indicators],
                 value=['lowestSoldPrice','medianSoldPrice'], multi=True
             ),
-        ])
-        #,style={'width': '30%', 'float': 'right', 'display': 'inline-block'})
+        ],
+        style={'display': 'inline-block', 'width':'49%'})
     ]),
 
     dcc.Graph(id='indicator-graphic'),
+
     html.Div([html.H2("Demographic")]),
     html.Div([
          dcc.Dropdown(
                 id='subs',
                 options=[{'label': i, 'value': i} for i in suburbs],
-                value=['Kingsford'], multi=True
-            )]),
-    html.Div([
+                value='Kingsford', multi=False
+            ),
     dcc.Dropdown(
        id='var',
        options=[{'label': i, 'value': i} for i in cats],
-       value=['CountryOfBirth'], multi=True
-   )]),
+       value='CountryOfBirth', multi=False
+   ),
+   dcc.Graph(id='pie-chart')],
+    style={'width':'49%', 'display': 'inline-block'}),
 
-    dcc.Graph(id='pie-chart'),
+   html.Div([
+         dcc.Dropdown(
+                id='subs1',
+                options=[{'label': i, 'value': i} for i in suburbs],
+                value='Randwick', multi=False
+            ),
+    dcc.Dropdown(
+       id='var1',
+       options=[{'label': i, 'value': i} for i in cats],
+       value='CountryOfBirth', multi=False
+   ),
+    dcc.Graph(id='pie-chart2')],
+   style={'width':'49%', 'display': 'inline-block','float':'right'}),
+
 ])
 
 @app.callback(
@@ -103,36 +109,17 @@ app.layout = html.Div([
     Input('xaxis-column', 'value'),
     Input('yaxis-column', 'value'))
 def update_graph(filt,filt2,xaxis_column_name, yaxis_column_name):
-    #dff = df[df['Year'] == year_value]
     dff = df.loc[df['suburb'].isin(filt)]
     dff = dff[dff['type']==filt2]
-    #dff = dff[dff['bedrooms']==filt3]
-    #fig = px.scatter(x=dff[xaxis_column_name],
-    #                 y=dff[yaxis_column_name],color="bedrooms")
-    #fig = go.Figure()
-    #fig.add_trace(go.Scatter(dff,x=xaxis_column_name,y=yaxis_column_name,color="bedrooms",
-    #    mode='lines', name = 'suburb'))
     sList = filt.copy()
-    #print(type(filt))
-    #df2 = dff[dff['suburb']==filt[0]]
     fig = px.line(dff,x=xaxis_column_name,y=yaxis_column_name[0],color="bedrooms",line_dash="suburb",\
             labels = {"bedrooms":"Beds", "suburb":"Suburb"})
     sList = yaxis_column_name.copy()
     del sList[0]
     for var in sList:
-        print(var)
-    #    df2 = dff[dff['suburb']==sub]
-    #    #print(df2)
         fig2 = px.line(dff,x=xaxis_column_name,y=var,color="bedrooms",line_dash="suburb").update_traces(mode="lines+markers")
         for i in range(len(fig2.data)):
             fig.add_trace(fig2.data[i])
-        #fig.add_trace(fig2.data[1])
-        #fig.add_trace(fig2.data[2])
-    #    fig.add_trace(fig2.data[1])
-
-    #    fig.add_trace(go.Scatter(x=dff[xaxis_column_name], y=dff[var], mode="lines+markers"))
-
-                     #hover_name=dff[dff['Indicator Name'] == yaxis_column_name]['Country Name'])
 
     fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0}, hovermode='closest')
     fig.update_layout(legend=dict(
@@ -148,21 +135,38 @@ def update_graph(filt,filt2,xaxis_column_name, yaxis_column_name):
     Output('pie-chart', 'figure'),
     Input('subs','value'),
     Input('var','value'))
-def dem_callback(subs,var):
-    dff = df_demo[df_demo['suburb'].isin(subs)]
-    dff = dff[dff['category'].isin(var)]
-    dff = dff.nlargest(5,'value')
-    print(dff)
-    fig = px.pie(dff,values='value',names='subcategory')
-    fig.update_layout(legend=dict(
-        yanchor="top",
-        y=0.99,
-        xanchor="left",
-        x=0.01
-    ))
+def dummy_pie_chart(*args,**kwargs):
+    return generate_pie_chart(*args,**kwargs)
 
+def generate_pie_chart(subs, var):
+    dff = df_demo[df_demo['suburb']==subs]
+    dff = dff[dff['category']==var]
+    total = dff['value'].sum()
+    dff = dff.nlargest(5,'value')
+    other = total-dff['value'].sum()
+    if(other>0):
+        dff.reset_index(inplace=True, drop=True)      
+        dff.loc[dff.shape[0]] = dff.loc[dff.shape[0]-1] 
+        dff.loc[dff.shape[0]-1,'subcategory']  = 'Other'   # To display correct proportions in pie chart
+        dff.loc[dff.shape[0]-1,'value'] = other
+    fig = px.pie(dff,values='value',names='subcategory', labels={'subcategory':var})
+    fig.update_traces(textinfo='percent+label',textposition='inside')
+    fig.update_layout(legend=dict(
+        yanchor="bottom",
+        y=1.0,
+        xanchor="left",
+        x=0.0,
+        font=dict(size=10),
+        orientation='h'))
     return fig
+
+@app.callback(
+    Output('pie-chart2', 'figure'),
+    Input('subs1','value'),
+    Input('var1','value'))
+def dummy_pie_chart2(*args, **kwargs):
+    return generate_pie_chart(*args, **kwargs)
+
 if __name__ == '__main__':
     app.run_server(debug=True)
 
-#print(df)
