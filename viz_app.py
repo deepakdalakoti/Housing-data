@@ -40,7 +40,7 @@ app.layout = html.Div([
                 options=[{'label': i, 'value': i} for i in suburbs],
                 value=['Kingsford','Randwick'], multi=True
             )],
-            style={'display': 'inline-block', 'width':'49%'}),
+            style={'display': 'inline-block', 'width':'33%'}),
 
             html.Div([
             dcc.Dropdown(
@@ -48,7 +48,15 @@ app.layout = html.Div([
                 options=[{'label': i, 'value': i} for i in types],
                 value='Unit'
             )],
-            style={'display': 'inline-block', 'width':'49%'}),
+            style={'display': 'inline-block', 'width':'33%'}),
+
+            html.Div([
+            dcc.Dropdown(
+                id='filt3',
+                options=[{'label': i, 'value': i} for i in beds],
+                value=[2], multi=True
+            )],
+            style={'display': 'inline-block', 'width':'33%'}),
 
         html.Div([
             dcc.Dropdown(
@@ -106,10 +114,12 @@ app.layout = html.Div([
     Output('indicator-graphic', 'figure'),
     Input('filt','value'),
     Input('filt2','value'),
+    Input('filt3','value'),
     Input('xaxis-column', 'value'),
     Input('yaxis-column', 'value'))
-def update_graph(filt,filt2,xaxis_column_name, yaxis_column_name):
+def update_graph(filt,filt2,filt3,xaxis_column_name, yaxis_column_name):
     dff = df.loc[df['suburb'].isin(filt)]
+    dff = dff.loc[dff['bedrooms'].isin(filt3)]
     dff = dff[dff['type']==filt2]
     sList = filt.copy()
     fig = px.line(dff,x=xaxis_column_name,y=yaxis_column_name[0],color="bedrooms",line_dash="suburb",\
