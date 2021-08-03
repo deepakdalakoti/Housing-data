@@ -139,7 +139,11 @@ def get_suburb_performance(state,suburb,postcode,category,bedrooms,periodSize,st
     if(not response.status_code == 200):
         print(response.status_code)
         return [], response.status_code
-    data = response.json()
+    try:
+        data = response.json()
+    except:
+        print("JSON cannot be loaded")
+        return [], response.status_code
     outdata = []
     for info in data['series']['seriesInfo']:
         base = [data['header']['state'],suburb, postcode, category, bedrooms, info['year'], info['month']]
@@ -277,8 +281,11 @@ if __name__ == "__main__":
             query_points = generate_all_combinations(args.bedrooms,args.type, args.city)
             pkl.dump(query_points,open('query_points_{}.pkl'.format(args.city),'wb'))
             create_table_performance(tab_name)
+         try:
+             query_points = pkl.load(open('query_points_{}.pkl'.format(args.city),'rb'))
+         except:
+             query_points = generate_all_combinations(args.bedrooms,args.type, args.city)
 
-         query_points = pkl.load(open('query_points_{}.pkl'.format(args.city),'rb'))
          idx=insert_suburb_performance_table(args.city,query_points,tab_name,args.period,1,args.num_periods)    
          query_points = query_points[idx:]
          pkl.dump(query_points,open('query_points_{}.pkl'.format(args.city),'wb'))

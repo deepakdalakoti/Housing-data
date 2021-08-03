@@ -24,7 +24,7 @@ suburbs = list(set(df['suburb'].to_list()))
 cats = df_demo['category'].unique()
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 types = ["Unit", "House"]
-beds = [1,2,3]
+beds = [1,2,3,4,5]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 filters = ['state','suburb','postcode','type','bedrooms']
