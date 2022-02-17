@@ -5,7 +5,7 @@ import sqlite3
 import pickle as pkl
 import argparse
 from API_KEY import API_KEY
-
+import time
 URL_ADD = "https://api.domain.com.au/v1/addressLocators?searchLevel=Suburb&suburb={}&state=NSW&postcode={}"
 URL_PERF = "https://api.domain.com.au/v2/suburbPerformanceStatistics/{}/{}/{}?propertyCategory={}&bedrooms={}&periodSize={}&startingPeriodRelativeToCurrent={}&totalPeriods={}"
 URL_DEM = "https://api.domain.com.au/v2/demographics/{}/{}/{}?types=AgeGroupOfPopulation%2CCountryOfBirth%2CNatureOfOccupancy%2COccupation%2CGeographicalPopulation%2CGeographicalPopulation%2CEducationAttendance%2CHousingLoanRepayment%2CMaritalStatus%2CReligion%2CTransportToWork%2CFamilyComposition%2CHouseholdIncome%2CRent%2CLabourForceStatus&year={}"
@@ -135,7 +135,11 @@ def insert_data_suburbs_performance(name,data):
 
 def get_suburb_performance(state,suburb,postcode,category,bedrooms,periodSize,stPeriod,totalPeriods):
     URL = URL_PERF.format(state,suburb,postcode,category,bedrooms,periodSize,stPeriod,totalPeriods)
-    response = requests.get(URL,headers = {"X-Api-Key": API_KEY})
+    try:
+        response = requests.get(URL,headers = {"X-Api-Key": API_KEY})
+    except:
+        print("Cannot get response from API")
+        return [], []
     if(not response.status_code == 200):
         print(response.status_code)
         return [], response.status_code
@@ -246,7 +250,7 @@ if __name__ == "__main__":
     parser.add_argument('--bedrooms',type=str, nargs='+', default=['1'])
     parser.add_argument('--type',type=str, nargs='+' ,default=['House'],help="House of Unit")
     args = parser.parse_args()
-
+    
     conn = sqlite3.connect(args.database_name)
     sql = conn.cursor()
     
@@ -278,6 +282,7 @@ if __name__ == "__main__":
     if(args.fill_table_performance):
          tab_name = 'suburb_performance_'+args.city+'_'+args.period
          if(args.reset_table):
+            print("Deleting Old Data ... ")
             query_points = generate_all_combinations(args.bedrooms,args.type, args.city)
             pkl.dump(query_points,open('query_points_{}.pkl'.format(args.city),'wb'))
             create_table_performance(tab_name)
