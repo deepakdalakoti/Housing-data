@@ -13,11 +13,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import sys
+import json
 
 conn = sqlite3.connect("housing.db")
 city = sys.argv[1]
 query = '''SELECT * FROM suburb_performance_{}_Years'''.format(city)
 df = pd.read_sql_query(query, conn)
+df['DATE'] = pd.to_datetime(df[['year', 'month']].assign(DAY=1))
 query = '''SELECT * FROM suburb_demographic_{}'''.format(city)
 df_demo = pd.read_sql_query(query,conn)
 suburbs = list(set(df['suburb'].to_list()))
@@ -30,6 +32,23 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 filters = ['state','suburb','postcode','type','bedrooms']
 available_indicators = df.columns.to_list()
 available_indicators = list(set(available_indicators)-set(filters))
+
+#Get geojson of NSW
+with open('../nsw.geojson','r') as f:
+    subs = json.load(f)
+
+#Get data only for relevant suburbs
+suburbs_rel = suburbs.copy()
+subs_geo = {}
+subs_geo['features']=[]
+for row in subs['features']:
+    if(row['properties']['nsw_loca_2'].title() in suburbs_rel):
+        row['id'] = row['properties']['nsw_loca_2'].title()
+        subs_geo['features'].append(row)
+        suburbs_rel.remove(row['id'])
+    if(len(suburbs_rel)==0):
+        break
+subs_geo['type']= 'FeatureCollection'
 
 app.layout = html.Div([
 
@@ -62,7 +81,7 @@ app.layout = html.Div([
             dcc.Dropdown(
                 id='xaxis-column',
                 options=[{'label': i, 'value': i} for i in available_indicators],
-                value='year'
+                value='DATE'
             ),
         ],
         style={'display': 'inline-block', 'width':'49%'}),
@@ -107,6 +126,43 @@ app.layout = html.Div([
    ),
     dcc.Graph(id='pie-chart2')],
    style={'width':'49%', 'display': 'inline-block','float':'right'}),
+
+    html.Div([html.H2("Map")]),
+   html.Div([
+        html.P('Data based on 2021'),
+
+        html.Div([
+         dcc.Dropdown(
+                id='ind',
+                options=[{'label': i, 'value': i} for i in available_indicators],
+                value='medianSoldPrice', multi=False
+            ),
+         ], style={'width':'33%','display':'inline-block'}),
+
+        html.Div([
+         dcc.Dropdown(
+                id='ind2',
+                options=[{'label': i, 'value': i} for i in types],
+                value='House', multi=False
+            ),
+         ], style={'width':'33%','display':'inline-block'}),
+
+        html.Div([
+         dcc.Dropdown(
+                id='ind3',
+                options=[{'label': i, 'value': i} for i in beds],
+                value=2, multi=False
+            ),
+         ], style={'width':'33%','display':'inline-block'}),
+
+
+    html.Div([html.Br()]),
+    dcc.Graph(id='map-plot')],
+
+   style={'width':'90%', 'display': 'inline-block','float':'left'}),
+   html.Br(),
+   html.Br(),
+
 
 ])
 
@@ -176,6 +232,30 @@ def generate_pie_chart(subs, var):
     Input('var1','value'))
 def dummy_pie_chart2(*args, **kwargs):
     return generate_pie_chart(*args, **kwargs)
+
+@app.callback(
+        Output('map-plot', 'figure'),
+        Input('ind','value'),
+        Input('ind2','value'),
+        Input('ind3','value'))
+def get_map_plot(ind,ind2,ind3):
+    #get latest data for each suburb
+    #df_map = df.sort_values('DATE').groupby('suburb').tail(1)
+    #print(df_map.medianSoldPrice.info())
+    df_map = df[(df['year']==2022) & (df['month']==4) & (df['bedrooms']==ind3) & (df['type']==ind2)]
+    df_map = df_map[ (df_map['bedrooms']==ind3) & (df_map['type']==ind2)]
+    df_map = df_map[~df_map[ind].isna()]
+    fig = px.choropleth_mapbox(df_map, geojson=subs_geo, locations='suburb', color=ind,
+                           color_continuous_scale="Viridis",
+                           #range_color=(0, 1e5),
+                           mapbox_style="carto-positron",
+                           zoom=10, 
+                           center = {"lat": -33.8893, "lon": 151.092},
+                           opacity=0.3,
+                           #labels={'unemp':'unemployment rate'}
+                          )
+    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    return fig
 
 if __name__ == '__main__':
     app.run_server(debug=True)

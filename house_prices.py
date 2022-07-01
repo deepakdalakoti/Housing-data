@@ -234,6 +234,18 @@ def generate_suburbs(city):
                 query_points.append([loc[0],loc[1]])
     return query_points
 
+def get_recent_sales(postcode):
+    URL = "https://www.corelogic.com.au/our-data/recent-sales?postcode="+postcode
+    HTML = requests.get(URL)
+    if(not HTML.status_code==200):
+        sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+    soup = BeautifulSoup(HTML.text,'html.parser')
+    print(soup)
+    table = soup.find(id='recent-sales') 
+    rows = table.findAll('tr')
+    data = [[cell.text for cell in row("td")] for row in rows]
+    print(data) 
+
 
 if __name__ == "__main__":
 
