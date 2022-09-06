@@ -77,19 +77,19 @@ class Mortgage():
                      Minimum monthly repayments: AUD {monthly} \n
                      Extra payments: AUD {extra_payments} \n
                      Total monthly payments AUD: {monthly+extra_payments} \n
-                     Held the property for {years_hold} years \n
-                     Property price in {years_hold} years with {growth_rate} percent compounding will be AUD {sold_price} \n
+                     Held the property for: {years_hold} years \n
+                     Property price in {years_hold} years with {growth_rate} percent compounding will be: AUD {sold_price} \n
                      Total interest paid: AUD {interest_paid} \n
                      Principal paid: AUD {principal_paid} \n
                      Profit from selling after settling with bank: AUD {sold_gain} \n
-                     Total cost of owning: {owning_cost} \n
-                     Profit: {money_left} \n
+                     Total cost of owning: AUD {owning_cost} \n
+                     Profit: AUD {money_left} \n
                      Current value of profit if {inflation}% discounting applied: AUD {curr_val} \n
                      Current value of principal: AUD {current_principal} \n
                      Current value of interest: AUD {current_interest} \n
                      Current value of sold price: AUD {cur_sale} \n
                      Profit based on current value: AUD {current_profit} \n
-                     Total money: principal + profit: AUD {current_principal+current_profit} \n
+                     Total money, principal + profit: AUD {current_principal+current_profit} \n
                      If instead invested money left after rent in index fund, current val: AUD {cur_val_spare} \n
        '''
        return out_str.split('\n')

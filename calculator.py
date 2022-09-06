@@ -1,9 +1,10 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
 
-from dash import Dash, html, dcc
+from dash import Dash, html, dcc, dash_table
 from dash.dependencies import Input, Output
 from payments import Mortgage
+import pandas as pd
 
 app = Dash(__name__,   external_stylesheets=["https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css"],
                     external_scripts=["https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"])
@@ -48,12 +49,14 @@ app.layout = html.Div([
     html.Br(),
     html.Br(),
     html.H3('Profit/Loss Statement'),
-    html.Div(id='output'),
+    #html.Div(id='output'),
+    dash_table.DataTable(id='dtable', columns = [{'name':'Description','id':'Description'},
+        {'name':'Value','id':'Value'}], style_cell={'text-align':'center'})
 
 ], )
 
 @app.callback(
-    Output('output', 'children'),
+    Output('dtable', 'data'),
     Input('price','value'),
     Input('deposit','value'),
     Input('other','value'),
@@ -70,8 +73,15 @@ app.layout = html.Div([
 def update_graph(price, deposit, other, interest, term, extra, growth, years_hold, inflation, rent, index):
     m = Mortgage(interest, term, price, deposit, other)
     out = m.pl_report(years_hold, growth, inflation, extra, rent, index)
-    elems = [html.Ul(o) for o in out if len(o)>0 ]
-    return html.Li(elems, className='list-group')
+    out = [o.strip() for o in out if len(o.strip())>0]
+    #elems = [html.Ul(o) for o in out if len(o)>0 ]
+    elems = {'Description':[x.split(':')[0] for x in out], 'Value':[x.split(':')[1] for x in out]}
+    df = pd.DataFrame(elems)
+    print(df)
+    #dt = dash_table.DataTable(df.to_dict('records'), [{"name": i, "id": i} for i in df.columns])
+    return df.to_dict('records')
+    #return html.Li(elems, className='list-group')
+
  
 if __name__ == '__main__':
     app.run_server(debug=True)
