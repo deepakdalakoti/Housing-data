@@ -10,7 +10,7 @@
 
 city=Sydney
 db=housing.db
-bed='2 3'
+bed='3 4'
 dwelling='House Unit'
 period=years
 nperiod=40
