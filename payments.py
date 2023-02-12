@@ -68,14 +68,14 @@ class Mortgage:
         principal_paid = self.get_principal_paid(years_hold, extra_payments)
         total_paid = principal_paid + self.deposit
         sold_gain = sold_price - (self.principal - principal_paid)
-        owning_cost = total_paid + interest_paid + self.other_expenses
+        owning_cost = total_paid + interest_paid
         money_left = sold_gain - owning_cost
         curr_val = money_left / (1 + growth_rate / 100) ** years_hold
         current_principal, current_interest = self.get_stats_current_val(
             years_hold, inflation, extra_payments
         )
         cur_sale = sold_price / (1 + inflation / 100) ** years_hold
-        current_own_cost = current_principal + current_interest + self.other_expenses
+        current_own_cost = current_principal + current_interest
         cur_sold_gain = sold_gain / (1 + inflation / 100) ** years_hold
         current_profit = cur_sold_gain - current_own_cost
         inflation_month = inflation / 1200
