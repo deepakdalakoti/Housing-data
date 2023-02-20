@@ -1,11 +1,13 @@
+import argparse
+import pickle as pkl
+import sqlite3
+import sys
+import time
+
 import requests
 from bs4 import BeautifulSoup
-import sys
-import sqlite3
-import pickle as pkl
-import argparse
+
 from API_KEY import API_KEY
-import time
 
 URL_ADD = "https://api.domain.com.au/v1/addressLocators?searchLevel=Suburb&suburb={}&state=NSW&postcode={}"
 URL_PERF = "https://api.domain.com.au/v2/suburbPerformanceStatistics/{}/{}/{}?propertyCategory={}&bedrooms={}&periodSize={}&startingPeriodRelativeToCurrent={}&totalPeriods={}"

@@ -1,12 +1,13 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
 
-from dash import Dash, html, dcc, dash_table, callback
-from dash.dependencies import Input, Output
-from payments import Mortgage
-from pages.rentvest import layout as rentvest_layout
 import dash
 import pandas as pd
+from dash import Dash, callback, dash_table, dcc, html
+from dash.dependencies import Input, Output
+
+from pages.rentvest import layout as rentvest_layout
+from payments import Mortgage
 
 app = Dash(
     __name__,

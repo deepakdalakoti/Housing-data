@@ -1,9 +1,9 @@
-from dash import Dash, html, dcc, dash_table, callback
-from dash.dependencies import Input, Output
-from payments import Mortgage
 import dash
 import pandas as pd
+from dash import Dash, callback, dash_table, dcc, html
+from dash.dependencies import Input, Output
 
+from payments import Mortgage
 
 layout = html.Div(
     [
@@ -94,6 +94,18 @@ layout = html.Div(
                     style={"width": "15%", "margin": "1px"},
                     inline=False,
                 ),
+                html.Label(
+                    "Reinvest positive cash flow?",
+                    style={"padding": "10px", "font-weight": "bold", "width": "15%"},
+                ),
+                dcc.RadioItems(
+                    options=["Yes", "No"],
+                    value="Yes",
+                    id="reinvest-rentvest",
+                    className="form-control-sm",
+                    style={"width": "15%", "margin": "1px"},
+                    inline=False,
+                ),
             ],
             style={
                 "padding": 10,
@@ -171,7 +183,7 @@ layout = html.Div(
                     className="form-control-sm",
                     style={"width": "15%"},
                 ),
-          html.Label(
+                html.Label(
                     "Personal Rent",
                     style={"padding": "10px", "font-weight": "bold", "width": "15%"},
                 ),
@@ -182,7 +194,6 @@ layout = html.Div(
                     className="form-control-sm",
                     style={"width": "15%"},
                 ),
-
             ],
             style={
                 "padding": 10,
@@ -222,7 +233,7 @@ layout = html.Div(
     Input("rent-rentvest", "value"),
     Input("monthly-cost-rentvest", "value"),
     Input("personal-rent-rentvest", "value"),
-
+    Input("reinvest-rentvest", "value"),
 )
 def update_graph(
     price,
@@ -236,11 +247,19 @@ def update_graph(
     inflation,
     rent,
     monthly_cost,
-    personal_rent
+    personal_rent,
+    reinvest,
 ):
     m = Mortgage(interest, term, price, deposit, other)
     out = m.pl_report_rentvest(
-        years_hold, growth, inflation, monthly_cost, interest_only, rent, personal_rent
+        years_hold,
+        growth,
+        inflation,
+        monthly_cost,
+        interest_only,
+        rent,
+        personal_rent,
+        reinvest,
     )
     out = [o.strip() for o in out if len(o.strip()) > 0]
     # elems = [html.Ul(o) for o in out if len(o)>0 ]
