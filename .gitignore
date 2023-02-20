@@ -1,0 +1,6 @@
+**/__pycache__
+*.pkl
+venv/
+API_KEY.py
+*.db
+*.ipynb_checkpoints
