@@ -1,20 +1,46 @@
-import math
-import sys
 from functools import lru_cache
+from typing import Optional, Tuple
 
 import numpy as np
 
+# TODO: Add some tests
+# TODO: Add functionality to borrow money from properties
+# TODO: if borrowed money from offset account, take care of interest payments
+
+
+class StrategyEnum(str):
+    """Enum for strategy"""
+
+    # principal place of residence
+    ppor = "ppor"
+    # Property bought for renting
+    rentvest = "rentvest"
+    # Property bought as ppor and converted to rentvest
+    convert_to_rent = "convert_to_rent"
+
 
 class Mortgage:
-    def __init__(self, interest, loan, years, interest_only=False):
+    """A class to do some basic calculations for Mortgage
+    Extra payments can be made but they have to be constant across periods
+    """
+
+    def __init__(
+        self, interest: float, loan: float, years: int, interest_only: bool = False
+    ):
         # Monthly interest
         self.interest = interest / (12 * 100)
         self.loan = loan
         self.years = years
+        # Compounding is being done monthly, this may not align with what banks do (daily) but close
         self.months = self.years * 12
         self.interest_only = interest_only
 
-    def get_monthly_payments(self):
+    def get_monthly_mortgage_payment(self) -> float:
+        """Get monthly payments for the mortgage
+
+        Returns:
+            float: _Monthly payments
+        """
         if self.interest_only:
             return self.get_monthly_interest_only_payment()
 
@@ -22,43 +48,78 @@ class Mortgage:
             self.interest * self.loan / (1 - (1 + self.interest) ** (-self.months))
         )
 
-    def get_monthly_interest_only_payment(self):
+    def get_monthly_interest_only_payment(self) -> float:
+        """Get monthly interest only payment
+
+        Returns:
+            float: _Monthly interest only payment
+        """
         return np.ceil(self.interest * self.loan)
 
-    def get_total_interest_paid(self, years, extra_payments=0):
-        monthly_payments = self.get_monthly_payments() + extra_payments
+    def get_total_interest_paid(self, years: int, extra_payments: float = 0) -> float:
+        """Get total interest paid for the mortgage in years
+
+        Args:
+            years (int): _Number of years_
+            extra_payments (float, optional): _Extra payments_. Defaults to 0.
+
+        Returns:
+            float: _Total interest paid_
+        """
+        monthly_payments = self.get_monthly_mortgage_payment() + extra_payments
         periods = years * 12
         return (self.loan * self.interest - monthly_payments) * (
             (1 + self.interest) ** periods - 1
         ) / self.interest + monthly_payments * periods
 
-    def get_principal_remaining(self, years, extra_payments=0):
+    def get_principal_remaining(self, years: int, extra_payments: float = 0) -> float:
+        """Get principal remaining after years
+
+        Args:
+            years (int): Number of years
+            extra_payments (float, optional): Extra payments. Defaults to 0.
+        Returns:
+            float: Principal remaining
+        """
         interest = self.get_total_interest_paid(years, extra_payments)
-        total_paid = (self.get_monthly_payments() + extra_payments) * years * 12
+        total_paid = (self.get_monthly_mortgage_payment() + extra_payments) * years * 12
         return self.loan - (total_paid - interest)
 
-    def get_principal_paid(self, years, extra_payments=0):
+    def get_principal_paid(self, years: int, extra_payments: float = 0) -> float:
+        """Get principal paid after years
+
+        Args:
+            years (int): Number of years
+            extra_payments (float, optional): Extra payments. Defaults to 0.
+
+        Returns:
+            float: Principal paid
+        """
         return self.loan - self.get_principal_remaining(years, extra_payments)
 
 
 class Property(Mortgage):
-    """Year = 1 means position after owning property for one year"""
+    """A class to do some basic calculations for Property relating to property value,
+    equity generated, cash flow, etc. The property can be ppor, rentvest or ppor converted to rentvest
+     Year = 1 means position after owning property for one year"""
 
     def __init__(
         self,
-        price,
-        deposit,
-        buying_cost,
-        growth_rate,
-        interest_rate,
-        rent=0,
-        extra_repayments=0,
-        cost_growth_rate=0,
-        running_cost=0,
-        lmi=0,
-        strategy="ppor",
-        owner_occupied_years=None,
+        price: float,
+        deposit: float,
+        buying_cost: float,
+        growth_rate: float,
+        interest_rate: float,
+        rent: float = 0,
+        extra_repayments: float = 0,
+        cost_growth_rate: float = 0,
+        running_cost: float = 0,
+        lmi: float = 0,
+        strategy: StrategyEnum = "ppor",
+        owner_occupied_years: Optional[float] = None,
     ):
+        # Deposit is including buying cost
+        # By default mortgage is for 30 years
         super().__init__(
             interest_rate,
             price - deposit + buying_cost + lmi,
@@ -80,15 +141,6 @@ class Property(Mortgage):
         # TODO -> have different growth rate for each
         # monthly
         self.cost_growth_rate = cost_growth_rate / 1200
-        min_repayment = self.get_monthly_payments()
-        if self.strategy == "rentvest":
-            if self.rent + self.running_cost - min_repayment < 0:
-                print(
-                    "Running cost higher than rental income earned, property negatively geared"
-                )
-            else:
-                print("Property positively geared")
-
         self.sanity_check()
 
     def sanity_check(self):
@@ -120,13 +172,34 @@ class Property(Mortgage):
                 self.owner_occupied_years >= 0
             ), "Owner occupied years should be positive"
 
-    def get_property_position(self, years, months=0):
+        min_repayment = self.get_monthly_mortgage_payment()
+        if self.strategy == "rentvest":
+            if self.rent + self.running_cost - min_repayment < 0:
+                print(
+                    "Running cost higher than rental income earned, property negatively geared"
+                )
+            else:
+                print("Property positively geared")
+
+    def get_property_position(
+        self, years: int, months: float = 0
+    ) -> Tuple[float, float, float]:
+        """Get loan left, offset and any out of pocket expenses after holding property for years
+            Out of pocker expenses include mortgage payments, running cost and any extra payments
+
+        Args:
+            years (int): Number of years property is held
+            months (int, optional): [description]. Defaults to 0.
+
+        Returns:
+            Tuple(float, float, float): Loan left, offset and out of pocket expenses
+        """
         if self.strategy == "convert_to_rent":
             # If property is to be converted to rent for first few years it will be normal property with 0 rent
             years_ppor = min(years, self.owner_occupied_years)
             loan_left, offset, oop = self.get_property_position_calc(
                 years_ppor,
-                self.get_monthly_payments(),
+                self.get_monthly_mortgage_payment(),
                 0,
                 self.running_cost,
                 self.loan,
@@ -147,26 +220,32 @@ class Property(Mortgage):
         else:
             return self.get_property_position_calc(
                 years,
-                self.get_monthly_payments(),
+                self.get_monthly_mortgage_payment(),
                 self.rent,
                 self.running_cost,
                 self.loan,
                 months,
             )
 
-    # @lru_cache(maxsize=32)
+    @lru_cache(maxsize=32)
     def get_property_position_calc(
-        self, years, min_repayment, rent, running_cost, loan, months=0
-    ):
-        """If we reinvest/put in offset whatever money we earn from rent what happens then
-        Interest will change every period, use brute force method to compute
+        self,
+        years: int,
+        min_repayment: float,
+        rent: float,
+        running_cost: float,
+        loan: float,
+        months: float = 0,
+    ) -> Tuple[float, float, float]:
+        """Brute force method to compute loan left, offset and out of pocket expenses after holding property for years
+        Compounding is done monthly. Money can be earned from rent. Any money left after paying mortgage and running cost is put in offset account which reduces interest paid
 
         """
 
         out_of_pocket = 0
         offset = 0
         loan_left = loan
-        # min_repayment = self.get_monthly_payments()
+        # min_repayment = self.get_monthly_mortgage_payment()
         periods = years * 12 + months
         for _ in range(0, periods):
 
@@ -190,16 +269,11 @@ class Property(Mortgage):
 
         return loan_left, offset, abs(out_of_pocket)
 
-    def get_property_val(self, years):
+    def get_property_val(self, years: int) -> float:
         """Property value compounding"""
         return self.do_compounding(self.price, years, self.growth_rate)
 
-    def get_monthly_oop_payments(self):
-        """How much per month needs to be paid after accounting for rent"""
-        min_payment = self.get_monthly_payments()
-        return min(min_payment - self.rent - self.running_cost, 0)
-
-    def get_principal_paid(self, years, extra_payments=0):
+    def get_principal_paid(self, years: int, extra_payments: float = 0) -> float:
         """How much principal has been paid in years"""
         if self.strategy == "ppor":
             return super().get_principal_paid(years, extra_payments)
@@ -210,7 +284,7 @@ class Property(Mortgage):
             print(f"Strategy {self.strategy} not implemented")
             return 0
 
-    def get_interest_paid(self, years):
+    def get_interest_paid(self, years: int) -> float:
         """How much interest has been paid in years"""
         if self.strategy in ["ppor", "rentvest"]:
             return super().get_total_interest_paid(years, self.extra_repayments)
@@ -218,7 +292,7 @@ class Property(Mortgage):
             print(f"Strategy {self.strategy} not implemented")
             return 0
 
-    def total_equity_at_year(self, years, factor=1.0):
+    def total_equity_at_year(self, years: int, factor: float = 1.0) -> float:
         """How much equity has been created? Equity = property value + principal paid - loan
         Equity is proerty value minus loan left"""
         property_value = self.get_property_val(years)
@@ -226,17 +300,13 @@ class Property(Mortgage):
         equity = factor * property_value + principal_paid - self.loan
         return equity
 
-    def get_running_costs(self, years):
-        _, _, oop = self.get_property_position(years)
-        return oop
-
-    def get_net_cash_flow(self, years):
-        """Net cash flow for this property, negative means cash out, positive means cash in"""
+    def get_net_cash_flow(self, years: int) -> float:
+        """Net cash flow for this property if held for years, negative means cash out, positive means cash in"""
         _, offset, oop = self.get_property_position(years)
         return offset - oop
 
-    def get_net_cash_flow_at_year(self, years):
-        """Net cash flow for this property, negative means cash out, positive means cash in"""
+    def get_net_yearly_cash_flow(self, years: int) -> float:
+        """Net cash flow for this property at year (not cumulative), negative means cash out, positive means cash in"""
         if years <= 0:
             return 0
 
@@ -244,7 +314,7 @@ class Property(Mortgage):
         _, offset, oop = self.get_property_position(years)
         return (offset - oop) - (offset_1 - oop_1)
 
-    def net_position_at_year(self, years):
+    def net_position_at_year(self, years: int) -> float:
         """Net wealth position in years
         Calculated as:
         equity - deposit - running cost - interest paid
@@ -254,7 +324,7 @@ class Property(Mortgage):
 
         return net_position
 
-    def get_avg_return_at_year(self, years):
+    def get_avg_return_at_year(self, years: int) -> float:
         """What's the profit generated from investment?
         What is the net yearly return on investment?
         """
@@ -264,14 +334,14 @@ class Property(Mortgage):
         avg_return = (net_position / total_owning_cost * 100) / years
         return avg_return
 
-    def get_lvr_at_year(self, years):
+    def get_lvr_at_year(self, years: int) -> float:
         """LVR considering payments and property growth"""
         loan_left = self.get_property_position(years)[0]
         property_val = self.get_property_val(years)
         return loan_left / property_val
 
     @staticmethod
-    def do_compounding(principal, years, interest):
+    def do_compounding(principal: float, years: int, interest: float) -> float:
         """Simple compounding"""
         return principal * (1 + interest / 100) ** years
 
@@ -513,126 +583,3 @@ class Portfolio:
             net_position.append(out[3])
 
         return property_vals, cash, equity, net_position
-
-
-#
-#    def pl_report(
-#        self, years_hold, growth_rate, inflation, extra_payments, rent=0, index_rate=6
-#    ):
-#        sold_price = self.do_compounding(self.property_price, years_hold, growth_rate)
-#        monthly = self.get_monthly_payments()
-#        interest_paid = self.get_total_interest_paid(years_hold, extra_payments)
-#        principal_paid = self.get_principal_paid(years_hold, extra_payments)
-#        total_paid = principal_paid + self.deposit
-#        sold_gain = sold_price - (self.principal - principal_paid)
-#        owning_cost = total_paid + interest_paid + self.other_expenses
-#        money_left = sold_gain - owning_cost
-#        curr_val = money_left / (1 + growth_rate / 100) ** years_hold
-#        current_principal, current_interest = self.get_stats_current_val(
-#            years_hold, inflation, extra_payments
-#        )
-#        cur_sale = sold_price / (1 + inflation / 100) ** years_hold
-#        current_own_cost = current_principal + current_interest + self.other_expenses
-#        cur_sold_gain = sold_gain / (1 + inflation / 100) ** years_hold
-#        current_profit = cur_sold_gain - current_own_cost
-#        inflation_month = inflation / 1200
-#        rent_current = (
-#            rent
-#            * 4
-#            * (1 - (1 + inflation_month) ** (-years_hold * 12))
-#            / inflation_month
-#        )
-#        spare_cash_if_no_buy = monthly + extra_payments - rent * 4
-#        # if invested in an index fund what will be the value in years_hold
-#        spare_val = (
-#            spare_cash_if_no_buy
-#            * ((1 + index_rate / 1200) ** (12 * years_hold) - 1)
-#            * 1200
-#            / index_rate
-#        )
-#        # what is the current value of this considering inflation
-#        cur_val_spare = spare_val / (1 + inflation / 100) ** years_hold
-#        out_str = f"""Property price: AUD {self.property_price} \n
-#                     Loan after deposit and costs: AUD {self.principal} \n
-#                     LVR: {self.principal/self.property_price} \n
-#                     Minimum monthly repayments: AUD {monthly} \n
-#                     Extra payments: AUD {extra_payments} \n
-#                     Total monthly payments AUD: {monthly+extra_payments} \n
-#                     Held the property for: {years_hold} years \n
-#                     Property price in {years_hold} years with {growth_rate} percent compounding will be: AUD {sold_price} \n
-#                     Total interest paid: AUD {interest_paid} \n
-#                     Principal paid: AUD {principal_paid} \n
-#                     Profit from selling after settling with bank: AUD {sold_gain} \n
-#                     Total cost of owning: AUD {owning_cost} \n
-#                     Profit: AUD {money_left} \n
-#                     Current value of profit if {inflation}% discounting applied: AUD {curr_val} \n
-#                     Current value of principal: AUD {current_principal} \n
-#                     Current value of interest: AUD {current_interest} \n
-#                     Current value of sold price: AUD {cur_sale} \n
-#                     Profit based on current value: AUD {current_profit} \n
-#                     Total money, principal + profit: AUD {current_principal+current_profit} \n
-#                     If instead invested money left after rent in index fund, current val: AUD {cur_val_spare} \n
-#       """
-#        return out_str.split("\n")
-#
-#    def pl_report_rentvest(
-#        self,
-#        years_hold,
-#        growth_rate,
-#        inflation,
-#        extra_cost,
-#        interest_only,
-#        rent_rentvest,
-#        rent_personal,
-#        reinvest
-#    ):
-#        sold_price = self.do_compounding(self.property_price, years_hold, growth_rate)
-#        if interest_only == "Yes":
-#            monthly = self.get_monthly_interest_payment()
-#            principal_paid = 0
-#            interest_paid = monthly*12*years_hold
-#        else:
-#            monthly = self.get_monthly_payments()
-#            principal_paid = self.get_principal_paid(years_hold, extra_payments=0)
-#            interest_paid = self.get_total_interest_paid(years_hold, extra_payments=0)
-#
-#        #This included other_expenses -> deposit is total of other_expenses
-#        total_paid = principal_paid + self.deposit
-#        sold_gain = sold_price - (self.principal - principal_paid)
-#        #rent is weekly
-#        rental_yield = rent_rentvest*52*years_hold
-#        rental_yield_after_expenses = (rent_rentvest-extra_cost)*52*years_hold
-#
-#        money_left_after_mortgage = rental_yield_after_expenses - monthly*12*years_hold
-#        if(money_left_after_mortgage<0):
-#            after_tax = 0.7*money_left_after_mortgage
-#        else:
-#            after_tax = money_left_after_mortgage
-#
-#        personal_rent = rent_personal*52*years_hold
-#
-#        owning_cost = total_paid + interest_paid - rental_yield_after_expenses
-#        money_left = sold_gain - owning_cost
-#
-#
-#
-#        # what is the current value of this considering inflation
-#        out_str = f"""Property price: AUD {self.property_price} \n
-#                     Loan after deposit and costs: AUD {self.principal} \n
-#                     LVR: {self.principal/self.property_price} \n
-#                     Minimum monthly repayments: AUD {monthly} \n
-#                     Held the property for: {years_hold} years \n
-#                     Property price in {years_hold} years with {growth_rate} percent compounding will be: AUD {sold_price} \n
-#                     Total interest paid: AUD {interest_paid} \n
-#                     Principal paid: AUD {principal_paid} \n
-#                     Total rent received after expenses: AUD {rental_yield_after_expenses} \n
-#                     Holding cost (deposit + interest paid - rent recevied): AUD {owning_cost} \n
-#                     Personal rent paid: AUD {personal_rent} \n
-#                     Money left after mortgage paid and rent received: AUD {money_left_after_mortgage} \n
-#                     Profit from selling after settling with bank: AUD {sold_gain} \n
-#                     Profit after accounting holding cost: AUD {money_left} \n
-#                     Money left after selling and accouting for mortagage paid and personal rent: AUD {money_left-personal_rent}
-#       """
-#        return out_str.split("\n")
-#
-#
