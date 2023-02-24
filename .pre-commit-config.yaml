@@ -3,13 +3,26 @@ repos:
     rev: 22.12.0
     hooks:
     -   id: black
+        # avoid manual add of files once black modifies them
+        # pre-commit will fail if black has modified the file
+        # this command will re-add all staged files once black has formatted them
+    #-   entry: bash -c 'black "$@"; echo $(git diff --name-only --staged) | xargs git add' --
 
--   repo: https://github.com/pycqa/isort
+ 
+
+-   repo: https://github.com/PyCQA/isort
     rev: 5.12.0
     hooks:
     -   id: isort
-
+#      - language_version: python3.10
+#      - verbose: true
+#        # avoid manual add of files once isort modifies them
+#        # pre-commit will fail if isort has modified the file
+#        # this command will re-add all staged files once isort has formatted them
+#      - entry: bash -c 'isort "$@"; echo $(git diff --name-only --staged) | xargs git add' --
+#
 -   repo: https://github.com/PyCQA/autoflake
     rev: v2.0.1
     hooks:
     -   id: autoflake
+#

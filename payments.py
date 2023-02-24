@@ -6,6 +6,7 @@ import numpy as np
 # TODO: Add some tests
 # TODO: Add functionality to borrow money from properties
 # TODO: if borrowed money from offset account, take care of interest payments
+# TODO: Any cash should be placed in offset account
 
 
 class StrategyEnum(str):
@@ -202,6 +203,7 @@ class Property(Mortgage):
                 self.get_monthly_mortgage_payment(),
                 0,
                 self.running_cost,
+                0,
                 self.loan,
                 months,
             )
@@ -212,10 +214,12 @@ class Property(Mortgage):
                 self.get_monthly_interest_only_payment(),
                 self.rent,
                 self.running_cost,
+                offset,
                 loan_left,
                 months,
             )
-            return loan_left, offset + offset_1, oop + oop_1
+            # offset adds on the previous offset
+            return loan_left, offset_1, oop + oop_1
 
         else:
             return self.get_property_position_calc(
@@ -223,6 +227,7 @@ class Property(Mortgage):
                 self.get_monthly_mortgage_payment(),
                 self.rent,
                 self.running_cost,
+                0,
                 self.loan,
                 months,
             )
@@ -234,6 +239,7 @@ class Property(Mortgage):
         min_repayment: float,
         rent: float,
         running_cost: float,
+        offset: float,
         loan: float,
         months: float = 0,
     ) -> Tuple[float, float, float]:
@@ -243,7 +249,7 @@ class Property(Mortgage):
         """
 
         out_of_pocket = 0
-        offset = 0
+
         loan_left = loan
         # min_repayment = self.get_monthly_mortgage_payment()
         periods = years * 12 + months
@@ -299,6 +305,16 @@ class Property(Mortgage):
         principal_paid = self.get_principal_paid(years)
         equity = factor * property_value + principal_paid - self.loan
         return equity
+
+    def get_offset_balance(self, years: int) -> float:
+        """Offset balance after years"""
+        _, offset, _ = self.get_property_position(years)
+        return offset
+
+    def get_oop_expenses(self, years: int) -> float:
+        """Out of pocket expenses after years"""
+        _, _, oop = self.get_property_position(years)
+        return oop
 
     def get_net_cash_flow(self, years: int) -> float:
         """Net cash flow for this property if held for years, negative means cash out, positive means cash in"""
@@ -378,7 +394,8 @@ class Portfolio:
 
         self.sanity_check()
 
-    def sanity_check(self):
+    def sanity_check(self) -> None:
+        """Sanity checks for portfolio"""
         # assert self.deposits <= self.cash, "Not enough cash to buy this portfolio of properties"
         assert len(self.buy_year) == len(
             self.properties
@@ -400,24 +417,113 @@ class Portfolio:
             <= 1
         ), "Only one convert_to_rent property allowed"
 
-    def validate_portfolio(self):
-        """Check if portfolio is valid"""
-        # Check if enough cash to run properties
-        # Check if enough cash to live
-        # TODO -> account for rent
-        max_year = max(self.buy_year) + 1
-        cash_flow = self.get_cash_flow(max_year)
-        income = Property.do_compounding(
-            self.monthly_income * 12, max_year, self.income_growth_rate
-        )
-        expenses = Property.do_compounding(
-            self.monthly_living_expenses * 12, max_year, self.expenses_growth_rate
-        )
-        net_cash = income - expenses - cash_flow
-        if net_cash < 0:
-            print("Property portfolio unsustaninable")
-        print(f"Savings to property cash_flow: {(income-expenses)/cash_flow*100:.2f}%")
-        return
+    @lru_cache(maxsize=128)
+    def get_property_position(
+        self, years: int, months: float = 0
+    ) -> Tuple[float, float, float]:
+        """Get loan left, offset and any out of pocket expenses after holding property for years
+            Out of pocker expenses include mortgage payments, running cost and any extra payments
+
+        Args:
+            years (int): Number of years property is held
+            months (int, optional): [description]. Defaults to 0.
+
+        Returns:
+            Tuple(float, float, float): Loan left, offset and out of pocket expenses
+        """
+        # How much cash do we have at t=0? It's total savings minus any deposit paid
+        cash = self.cash
+
+        n_properties = len(self.properties)
+
+        loan_left_properties = np.zeros((years + 1, n_properties))
+        oop_properties = np.zeros((years + 1, n_properties))
+
+        total_cash = np.zeros((years + 1, 1))
+
+        for i, property in enumerate(self.properties):
+            if self.buy_year[i] > years:
+                continue
+            loan_left_properties[self.buy_year[i], i] = property.loan
+
+        total_cash[0] = cash - self.get_cash_deposit_paid_at_year(0)
+
+        for i in range(1, years + 1):
+
+            oop_all = 0
+            offset_property = 0
+            # At the start of the year we buy property
+            # cash = cash - self.get_cash_deposit_paid_at_year(i)
+            # This is the cash left after buying
+            # total_cash[i] = cash
+
+            n_properties_active = len(
+                [prop for k, prop in enumerate(self.properties) if i > self.buy_year[k]]
+            )
+
+            for j, property in enumerate(self.properties):
+
+                if i <= self.buy_year[j]:
+                    continue
+
+                if property.strategy == "convert_to_rent":
+                    if i < self.buy_year[j] + property.owner_occupied_years:
+                        loan_left, offset, oop = property.get_property_position_calc(
+                            1,
+                            property.get_monthly_mortgage_payment(),
+                            0,  # can't have rent during owner occupied periods
+                            property.running_cost,
+                            total_cash[i - 1, 0] * (1 / n_properties_active),
+                            loan_left_properties[i - 1, j],
+                            months,
+                        )
+                    else:
+                        loan_left, offset, oop = property.get_property_position_calc(
+                            1,
+                            property.get_monthly_interest_only_payment(),
+                            property.rent,
+                            property.running_cost,
+                            total_cash[i - 1, 0] * (1 / n_properties_active),
+                            loan_left_properties[i - 1, j],
+                            months,
+                        )
+                else:
+                    loan_left, offset, oop = property.get_property_position_calc(
+                        1,
+                        property.get_monthly_mortgage_payment(),
+                        property.rent,
+                        property.running_cost,
+                        total_cash[i - 1, 0] * (1 / n_properties_active),
+                        loan_left_properties[i - 1, j],
+                        months,
+                    )
+
+                # Loan left for the next year
+                loan_left_properties[i, j] = loan_left
+                # How much oop expenses at the end of the year
+                oop_properties[i, j] = oop
+
+                offset_property = offset_property + offset
+                oop_all += oop
+            # At the end of this year how much cash do we have available?
+            # offset is what we earned from property, if we didn't earn anything offset will be same as input
+            cash = cash + (offset_property - cash)
+            cash = (
+                cash
+                + self.monthly_savings * 12
+                - self.get_cash_deposit_paid_at_year(i)
+                - self.get_personal_rent_expenditure_at_year(i)
+                - oop_all
+            )
+            total_cash[i] = cash
+        return loan_left_properties, oop_properties, total_cash
+
+    def get_portfolio_position(self, years):
+        loan_left, oop, cash = self.get_property_position(years)
+        property_val = self.get_property_val(years)
+        loan_left = np.sum(loan_left[:, :], axis=1)
+        equity = property_val - loan_left[-1]
+        return property_val, cash[-1], equity, 0
 
     def get_cash_flow(self, years):
         """Cash flow for the portfolio"""
@@ -425,6 +531,17 @@ class Portfolio:
 
         property_cash_flow = [
             prop.get_net_cash_flow(years - self.buy_year[i])
+            if self.buy_year[i] < years
+            else 0
+            for i, prop in enumerate(self.properties)
+        ]
+        return sum(property_cash_flow)
+
+    def get_cash_flow_excluding_offset(self, years: int) -> float:
+        """Cash flow for the portfolio excluding offset account"""
+        # What is the cash flow for each property
+        property_cash_flow = [
+            prop.get_oop_expenses(years - self.buy_year[i])
             if self.buy_year[i] < years
             else 0
             for i, prop in enumerate(self.properties)
@@ -465,7 +582,7 @@ class Portfolio:
         """Total property value"""
         property_vals = [
             prop.get_property_val(years - self.buy_year[i])
-            if self.buy_year[i] < years
+            if self.buy_year[i] <= years
             else 0
             for i, prop in enumerate(self.properties)
         ]
@@ -511,10 +628,31 @@ class Portfolio:
             years_all = np.arange(1, years + 1)
             for buy, occupied in zip(buy_years, owner_occupied_years):
                 years_all = years_all[(years_all <= buy) & (years_all > buy + occupied)]
-            print(years_all)
             return self.monthly_living_rent * 12 * len(years_all)
         else:
             return self.monthly_living_rent * 12 * years
+
+    def get_personal_rent_expenditure_at_year(self, years):
+        """How much is spent on rent?"""
+        # One portfolio can only have one ppor property
+        if years <= 0:
+            return 0
+
+        return self.get_personal_rent_expenditure(
+            years
+        ) - self.get_personal_rent_expenditure(years - 1)
+
+    def get_total_cash_deposit_paid(self, year):
+        """All properties are bought by using cash and savings"""
+
+        return sum(
+            [
+                prop.deposit * (1 - self.equity_use_fraction[i])
+                if self.buy_year[i] <= year
+                else 0
+                for i, prop in enumerate(self.properties)
+            ]
+        )
 
     def get_cash_deposit_paid_at_year(self, year):
         """All properties are bought by using cash and savings"""
@@ -522,7 +660,7 @@ class Portfolio:
         return sum(
             [
                 prop.deposit * (1 - self.equity_use_fraction[i])
-                if self.buy_year[i] <= year
+                if self.buy_year[i] == year
                 else 0
                 for i, prop in enumerate(self.properties)
             ]
@@ -550,9 +688,20 @@ class Portfolio:
         cash = (
             self.cash
             + self.monthly_savings * 12 * years
-            - self.get_cash_deposit_paid_at_year(years)
+            - self.get_total_cash_deposit_paid(years)
             - self.get_personal_rent_expenditure(years)
             + self.get_cash_flow(years)
+        )
+        return cash
+
+    def get_total_cash_excluding_offset(self, years: int) -> float:
+        """Total cash in the portfolio excluding offset account"""
+        cash = (
+            self.cash
+            + self.monthly_savings * 12 * years
+            - self.get_total_cash_deposit_paid(years)
+            - self.get_personal_rent_expenditure(years)
+            - self.get_cash_flow_excluding_offset(years)
         )
         return cash
 
@@ -576,7 +725,8 @@ class Portfolio:
         net_position = []
 
         for i in range(0, year_end):
-            out = self.get_position_at_year(i)
+            # out = self.get_position_at_year(i)
+            out = self.get_portfolio_position(i)
             property_vals.append(out[0])
             cash.append(out[1])
             equity.append(out[2])
