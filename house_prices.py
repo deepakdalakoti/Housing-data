@@ -2,7 +2,6 @@ import argparse
 import pickle as pkl
 import sqlite3
 import sys
-import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -12,7 +11,9 @@ from API_KEY import API_KEY
 URL_ADD = "https://api.domain.com.au/v1/addressLocators?searchLevel=Suburb&suburb={}&state=NSW&postcode={}"
 URL_PERF = "https://api.domain.com.au/v2/suburbPerformanceStatistics/{}/{}/{}?propertyCategory={}&bedrooms={}&periodSize={}&startingPeriodRelativeToCurrent={}&totalPeriods={}"
 URL_DEM = "https://api.domain.com.au/v2/demographics/{}/{}/{}?types=AgeGroupOfPopulation%2CCountryOfBirth%2CNatureOfOccupancy%2COccupation%2CGeographicalPopulation%2CGeographicalPopulation%2CEducationAttendance%2CHousingLoanRepayment%2CMaritalStatus%2CReligion%2CTransportToWork%2CFamilyComposition%2CHouseholdIncome%2CRent%2CLabourForceStatus&year={}"
-state_map = {"Sydney": "NSW", "Melbourne": "VIC"}
+state_map = {"Sydney": "NSW", "Melbourne": "VIC", "Perth": "WA", "Brisbane": "QLD"}
+
+# TODO -> Convert to ORM models
 
 
 def get_suburbs(city):
@@ -60,6 +61,72 @@ def get_suburbs(city):
                 print("No postcode data for {}".format(sub))
                 continue
         return MelSubs
+    elif city == "Perth":
+        URL = "https://www.homely.com.au/find-suburb-by-region/perth-greater-western-australia"
+        HTML = requests.get(URL)
+        if not HTML.status_code == 200:
+            sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+        soup = BeautifulSoup(HTML.text, "html.parser")
+        # allList = soup.find("div", "col-group")
+        links = soup.find_all("a")
+        Psubs = []
+        for link in links:
+            Psubs.append(link.get_text())
+        URL = "http://www.justweb.com.au/post-code/perth-postalcodes.html"
+        HTML = requests.get(URL)
+        if not HTML.status_code == 200:
+            sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+        soup = BeautifulSoup(HTML.text, "html.parser")
+        allList = soup.find_all("select")
+        subDict = {}
+        for entry in allList[1].find_all("option"):
+            txt = entry.get_text()
+            code = txt[-4:]
+            sub = txt[:-4].strip()
+            subDict[sub] = code
+        PerthSubs = []
+        for sub in Psubs:
+            try:
+                PerthSubs.append((sub, subDict[sub]))
+            except:
+                print("No postcode data for {}".format(sub))
+                continue
+
+        return PerthSubs
+
+    elif city == "Brisbane":
+        URL = "https://www.homely.com.au/find-suburb-by-region/brisbane-queensland"
+        HTML = requests.get(URL)
+        if not HTML.status_code == 200:
+            sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+        soup = BeautifulSoup(HTML.text, "html.parser")
+        # allList = soup.find("div", "col-group")
+        links = soup.find_all("a")
+        Bsubs = []
+        for link in links:
+            Bsubs.append(link.get_text())
+        URL = "http://www.justweb.com.au/post-code/brisbane-postalcodes.html"
+        HTML = requests.get(URL)
+        if not HTML.status_code == 200:
+            sys.exit(URL + " is not available\n", "RESPONSE " + HTML.status_code)
+        soup = BeautifulSoup(HTML.text, "html.parser")
+        allList = soup.find_all("select")
+        subDict = {}
+        for entry in allList[1].find_all("option"):
+            txt = entry.get_text()
+            code = txt[-4:]
+            sub = txt[:-4].strip()
+            subDict[sub] = code
+        BrisSubs = []
+        for sub in Bsubs:
+            try:
+                BrisSubs.append((sub, subDict[sub]))
+            except:
+                print("No postcode data for {}".format(sub))
+                continue
+
+        return BrisSubs
+
     else:
         sys.exit("No implementation for {}".format(city))
 
@@ -130,7 +197,7 @@ def create_table_performance(name):
     sql.execute(query)
 
 
-def create_table_demographic(name):
+def create_table_demographic(names):
     query = """DROP TABLE IF EXISTS {};""".format(name)
     sql.execute(query)
     query = """CREATE TABLE {} (

@@ -175,7 +175,7 @@ class Property(Mortgage):
 
         min_repayment = self.get_monthly_mortgage_payment()
         if self.strategy == "rentvest":
-            if self.rent + self.running_cost - min_repayment < 0:
+            if self.rent - self.running_cost - min_repayment < 0:
                 print(
                     "Running cost higher than rental income earned, property negatively geared"
                 )
@@ -518,65 +518,54 @@ class Portfolio:
             total_cash[i] = cash
         return loan_left_properties, oop_properties, total_cash
 
-    def get_portfolio_position(self, years):
+    def get_portfolio_position(self, years: int) -> Tuple[float, float, float, float]:
+        """Get property value, cash, equity and oop expenses after holding property for years
+
+        Args:
+            years (int): _description_
+
+        Returns:
+            Tuple[float, float, float, float]: _description_
+        """ """"""
         loan_left, oop, cash = self.get_property_position(years)
-        property_val = self.get_property_val(years)
+        property_val = np.array([self.get_property_val(i) for i in range(years + 1)])
         loan_left = np.sum(loan_left[:, :], axis=1)
-        equity = property_val - loan_left[-1]
-        return property_val, cash[-1], equity, 0
+        equity = property_val - loan_left
+        usable_equity = property_val * 0.8 - loan_left
+        equity_needed = np.cumsum(
+            [self.get_equity_deposit_paid_at_year(i) for i in range(years + 1)]
+        )
+
+        equity_sufficient = usable_equity - equity_needed
+
+        # If we actually need equity at that point and usable equity is not enough
+        if np.any(equity_sufficient < 0):
+            idx = np.argwhere(equity_sufficient < 0)[0][0]
+            if equity_needed[idx] > 0:
+                print("Not enough usable equity to buy property")
+
+        equity = equity - equity_needed
+
+        return np.array(property_val), cash, equity, np.cumsum(oop), loan_left
 
     def get_cash_flow(self, years):
         """Cash flow for the portfolio"""
-        # What is the cash flow for each property
 
-        property_cash_flow = [
-            prop.get_net_cash_flow(years - self.buy_year[i])
-            if self.buy_year[i] < years
-            else 0
-            for i, prop in enumerate(self.properties)
-        ]
-        return sum(property_cash_flow)
+        cash_flow = self.get_portfolio_position(years)[1]
+        return cash_flow
 
-    def get_cash_flow_excluding_offset(self, years: int) -> float:
-        """Cash flow for the portfolio excluding offset account"""
-        # What is the cash flow for each property
-        property_cash_flow = [
-            prop.get_oop_expenses(years - self.buy_year[i])
-            if self.buy_year[i] < years
-            else 0
-            for i, prop in enumerate(self.properties)
-        ]
-        return sum(property_cash_flow)
-
-    def get_equity_at_year(self, years, factor=1.0):
+    def get_equity(self, years):
         """Equity in the portfolio"""
-        # What is the equity for each property
-        property_equity = [
-            prop.total_equity_at_year(years - self.buy_year[i], factor=factor)
-            if self.buy_year[i] <= years
-            else 0
-            for i, prop in enumerate(self.properties)
-        ]
-        return sum(property_equity) - self.get_equity_deposit_paid_at_year(years)
+        _, _, equity, _, _ = self.get_portfolio_position(years)
+        return equity
 
     def get_deposit_needed_at_year(self, years):
-        # How much deposit is needed to buy properties?
+        """How much deposit is needed to buy properties?"""
         deposit = 0
         for i, year in enumerate(self.buy_year):
             if year <= years:
                 deposit = deposit + self.properties[i].deposit
         return deposit
-
-    def get_net_position_at_year(self, years):
-        """Net position in the portfolio"""
-        # What is the net position for each property
-        property_net_position = [
-            prop.net_position_at_year(years - self.buy_year[i])
-            if self.buy_year[i] < years
-            else 0
-            for i, prop in enumerate(self.properties)
-        ]
-        return sum(property_net_position)
 
     def get_property_val(self, years):
         """Total property value"""
@@ -587,18 +576,6 @@ class Portfolio:
             for i, prop in enumerate(self.properties)
         ]
         return sum(property_vals)
-
-    def get_usable_equity(self, years):
-        """Equity which can be used to take loans"""
-        # Usable equity is 80% property value - loan_left
-        # Only consider positive equity
-        usable_equity = [
-            max(prop.total_equity_at_year(years - self.buy_year[i], factor=0.8), 0)
-            if self.buy_year[i] < years
-            else 0
-            for i, prop in enumerate(self.properties)
-        ]
-        return sum(usable_equity)
 
     def add_property(self):
         pass
@@ -666,70 +643,37 @@ class Portfolio:
             ]
         )
 
+    def get_equity_deposit_paid(self, years):
+        """All properties are bought by using cash and savings"""
+        equity_needed = sum(
+            [
+                prop.deposit * self.equity_use_fraction[i]
+                if self.buy_year[i] <= years
+                else 0
+                for i, prop in enumerate(self.properties)
+            ]
+        )
+        return equity_needed
+
     def get_equity_deposit_paid_at_year(self, year):
         """All properties are bought by using cash and savings"""
         equity_needed = sum(
             [
                 prop.deposit * self.equity_use_fraction[i]
-                if self.buy_year[i] <= year
+                if self.buy_year[i] == year
                 else 0
                 for i, prop in enumerate(self.properties)
             ]
         )
-        usable_equity = self.get_usable_equity(year)
-        if equity_needed > usable_equity:
-            print(
-                f"Not enough equity at year {year} to buy property, usable equity: {usable_equity:.2f}, equity needed: {equity_needed:.2f}"
-            )
         return equity_needed
 
     def get_total_cash(self, years):
         """Total cash in the portfolio"""
-        cash = (
-            self.cash
-            + self.monthly_savings * 12 * years
-            - self.get_total_cash_deposit_paid(years)
-            - self.get_personal_rent_expenditure(years)
-            + self.get_cash_flow(years)
-        )
+        cash = self.get_portfolio_position(years)[1]
         return cash
 
-    def get_total_cash_excluding_offset(self, years: int) -> float:
-        """Total cash in the portfolio excluding offset account"""
-        cash = (
-            self.cash
-            + self.monthly_savings * 12 * years
-            - self.get_total_cash_deposit_paid(years)
-            - self.get_personal_rent_expenditure(years)
-            - self.get_cash_flow_excluding_offset(years)
-        )
-        return cash
-
-    def get_position_at_year(self, years):
+    def get_portfolio_stats(self, years):
         """Portfolio position at year"""
         # Total property value
-        property_vals = self.get_property_val(years)
-        # What is savings + left over money after buying property
-        # Account for running costs
-        cash = self.get_total_cash(years)
-        # Any out of pocket expenses in holding the property including monthly payments
-        equity = self.get_equity_at_year(years)
-        net_position = self.get_net_position_at_year(years)
-        return property_vals, cash, equity, net_position
-
-    def get_position_time_series(self, year_end):
-        """Get a time series of portfolio position"""
-        property_vals = []
-        cash = []
-        equity = []
-        net_position = []
-
-        for i in range(0, year_end):
-            # out = self.get_position_at_year(i)
-            out = self.get_portfolio_position(i)
-            property_vals.append(out[0])
-            cash.append(out[1])
-            equity.append(out[2])
-            net_position.append(out[3])
-
-        return property_vals, cash, equity, net_position
+        _, cash, equity, _, _ = self.get_portfolio_position(years)
+        return cash, equity

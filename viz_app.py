@@ -1,4 +1,3 @@
-import json
 import sqlite3
 import sys
 
@@ -66,7 +65,7 @@ app.layout = html.Div(
                         dcc.Dropdown(
                             id="filt2",
                             options=[{"label": i, "value": i} for i in types],
-                            value="Unit",
+                            value="House",
                         )
                     ],
                     style={"display": "inline-block", "width": "33%"},
@@ -76,7 +75,7 @@ app.layout = html.Div(
                         dcc.Dropdown(
                             id="filt3",
                             options=[{"label": i, "value": i} for i in beds],
-                            value=[2],
+                            value=[3],
                             multi=True,
                         )
                     ],
